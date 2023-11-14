@@ -1,0 +1,111 @@
+.read output.sqlite
+.once elements.csv
+
+with recursive
+  role_to_person (circle_id, role_name, person_name, term) as
+  (
+    select
+      circle_id,
+      role_name, 
+      coalesce(person.display_name, person.full_name),
+      term
+    from circle_membership, person on person_id = person.id
+      left join role on circle_membership_id = circle_membership.id
+  ),
+  departments (peripheral_id, name) as
+  (
+    -- This information could be encoded into the `circle` table, but barring
+    -- that, this needs to be maintained here:
+    values
+      (55, 'Mission'),
+      (37, 'General'),
+      (1, 'Content'),
+      (23, 'Ecosystem'),
+      (38, 'International'),
+      (49, 'SoFA Support Services'),
+      (56, 'SoPra')
+  ),
+  annotation (circle_id, department, computed_tier) as
+  (
+    select peripheral_id, name, 0 from departments where name = 'Mission'
+    union all
+      select
+        id,
+        -- If the current row is the outermost circle for a department, use
+        -- its department name.
+        iif(departments.peripheral_id is not null,
+            departments.name, department),
+        computed_tier + 1
+      from circle, annotation
+        left join departments on id = peripheral_id
+      where parent_id = circle_id
+  )
+select
+  format('circle.%u', circle.id) as ID,
+  department as "Kumu View",
+  --coalesce(circle.display_name, circle.name) as Label,
+  circle.name as Label,
+  'circle' as Type,
+  computed_tier as "Circle tier",
+  aim as Aim,
+  domain as Domain,
+  activities as Activities,
+  contact_email as "Contact eMail",
+  group_concat(coalesce(person.display_name, person.full_name), ' | ')
+    as "Circle members",
+  min(leader_role.person_name) as Leader,
+  min(leader_role.term) as "Leader term",
+  min(delegate_role.person_name) as Delegate,
+  min(delegate_role.term) as "Delegate term",
+  min(facilitator_role.person_name) as Facilitator,
+  min(facilitator_role.term) as "Facilitator term",
+  min(secretary_role.person_name) as Secretary,
+  min(secretary_role.term) as "Secretary term",
+  minutes_url as "Description gDoc Link",
+  null as "Holder of role",
+  null as "Term end"
+from circle, annotation on circle.id = annotation.circle_id
+  left join circle_membership on circle.id = circle_membership.circle_id
+  left join person on person.id = circle_membership.person_id
+    and circle_membership.leave_date is null
+  left join role_to_person as leader_role
+    on leader_role.role_name = 'leader'
+       and leader_role.circle_id = circle.id
+  left join role_to_person as delegate_role
+    on delegate_role.role_name = 'delegate'
+       and delegate_role.circle_id = circle.id
+  left join role_to_person as facilitator_role
+    on facilitator_role.role_name = 'facilitator'
+       and facilitator_role.circle_id = circle.id
+  left join role_to_person as secretary_role
+    on secretary_role.role_name = 'secretary'
+       and secretary_role.circle_id = circle.id
+group by circle.id
+-- We could simplify this by partitioning this into a separate export, but
+-- until then:
+union all
+select
+  format('operational_role.%u', operational_role.id) as ID,
+  department as "Kumu View",
+  operational_role.role_name as Label,
+  'operational role' as Type,
+  computed_tier as "Circle tier",
+  aim as Aim,
+  domain as Domain,
+  activities as Activities,
+  operational_role.email as "Contact eMail",
+  null as "Circle members",
+  null as Leader,
+  null as "Leader term",
+  null as Delegate,
+  null as "Delegate term",
+  null as Facilitator,
+  null as "Facilitator term",
+  null as Secretary,
+  null as "Secretary term",
+  role_description_url as "Description gDoc Link",
+  coalesce(person.display_name, person.full_name) as "Holder of role",
+  term as "Term end"
+from operational_role, annotation
+    on operational_role.parent_circle_id = annotation.circle_id
+  left join person on operational_role.person_id = person.id

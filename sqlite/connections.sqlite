@@ -1,0 +1,18 @@
+.read output.sqlite
+.once connections.csv
+
+select
+  format('circle.%u', id) as 'From',
+  format('circle.%u', parent_id) as 'To',
+  iif(is_helping, 'Single Link', 'Double Link') as Type,
+  iif(is_helping, 'directed', 'mutual') as Direction
+from circle
+where parent_id is not null
+union all
+select
+  format('operational_role.%u', id) as 'From',
+  format('circle.%u', parent_circle_id) as 'To',
+  'is role in' as Type,
+  'undirected' as Direction
+from operational_role
+where parent_circle_id is not null

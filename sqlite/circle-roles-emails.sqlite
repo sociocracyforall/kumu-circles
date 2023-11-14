@@ -1,0 +1,17 @@
+select
+  circle_membership.id,
+  coalesce(person.display_name, person.full_name) as person,
+  email,
+  circle.name as circle,
+  circle_membership.circle_id,
+  role.role_name as circle_role,
+  role.id as role_id,
+  role.term
+from circle_membership inner join circle
+  on circle_membership.circle_id = circle.id
+     and leave_date is null
+inner join person
+  on circle_membership.person_id = person.id
+left join role on circle_membership.id = role.circle_membership_id
+where circle.name = @target
+order by person
